@@ -1,0 +1,281 @@
+---
+title: "Data Summary"
+author: "Caizhi Huang, Craig Gin and Ben Callahan"
+date: "1/9/2022"
+output: html_document
+---
+
+Data summary and visualization of the data sets included in the meta-analysis.
+
+
+
+## Set up
+
+```{r, warning=FALSE, message=FALSE}
+
+# load the packages
+pkgs <- c("tidyverse", "RColorBrewer", "ggpubr", "scales")
+lapply(pkgs, require, character.only = TRUE)
+
+# load the data
+inpath  <- "/Users/huangc9/Documents/Ben research/Publishable/metaManuscript/Analyses/Data/"
+outpath <- "data_summary_output/"
+
+load(paste0(inpath, "ASV_meta.Rdata"))
+load(paste0(inpath, "taxa_data.Rdata"))
+```
+
+## Merge Ba and Bb dataset
+```{r, warning = FALSE, message=FALSE}
+# load the overlap sample ID in Ba dataset
+overlapsample <- read.csv("Ba_Bb_overlap.csv",header = F)[,1]
+
+Bas_com  <- ASV_meta$ASV$com$Ba[!rownames(ASV_meta$ASV$com$Ba) %in% overlapsample,]
+Bas_top  <- ASV_meta$ASV$top$Ba[!rownames(ASV_meta$ASV$top$Ba) %in% overlapsample,]
+Bas_ori  <- ASV_meta$ASV$original$Ba[!rownames(ASV_meta$ASV$original$Ba) %in% overlapsample,]
+Bas_meta <- ASV_meta$meta$Ba[!ASV_meta$meta$Ba$SampleID %in% overlapsample,]
+
+rownames(Bas_com) <- paste0(rownames(Bas_com), "_Ba")
+rownames(Bas_top) <- paste0(rownames(Bas_top), "_Ba")
+rownames(Bas_ori) <- paste0(rownames(Bas_ori), "_Ba")
+Bas_meta$SampleID <- paste0(Bas_meta$SampleID, "_Ba")
+
+ASV_meta$ASV$com <- append(list(Br = rbind(Bas_com, ASV_meta$ASV$com$Bb)), ASV_meta$ASV$com[-c(1,2)])
+ASV_meta$ASV$top <- append(list(Br = rbind(Bas_top, ASV_meta$ASV$top$Bb)), ASV_meta$ASV$top[-c(1,2)])
+
+ASV_meta$meta <- append(list(Br = rbind(Bas_meta, ASV_meta$meta$Bb)), ASV_meta$meta[-c(1,2)])
+ASV_meta$meta$Br$Study <- "Brown2018"
+ASV_meta$meta$Br$Abbr  <- "Br"
+```
+
+## Sample Size
+```{r, warning = FALSE, message=FALSE}
+#get the subject level data 
+meta_sub  <- lapply(ASV_meta$meta, function(x){x[!duplicated(x[,"SubjectID"]), ]})
+meta_sub$Fe$mAge  <- NA
+meta_sub$Bl$mRace <- NA
+
+# subject level
+comb_meta <- Reduce(rbind, meta_sub)
+comb_meta$Abbr <- factor(comb_meta$Abbr, levels = unique(comb_meta$Abbr))
+
+# sample level
+comb_metas <- Reduce(rbind, ASV_meta$meta)
+comb_metas$Abbr <- factor(comb_metas$Abbr, levels = unique(comb_metas$Abbr))
+
+# sample size
+size_col <- comb_metas %>% group_by(Abbr) %>% summarise(nsample = length(SampleID),
+                                            nsubject = length(unique(SubjectID)),
+                                            ratio = round(nsample/nsubject,1))
+```
+
+## BMI
+```{r, warning = FALSE, message=FALSE}
+# plot the box plot for BMI
+bmiplot <- ggplot(data=comb_meta, aes(x=Abbr, y=mBMI)) +
+  geom_violin()+
+  geom_boxplot(width=0.1, col="red4") + 
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=12))+
+  labs(y="BMI",x="Study",title = "Maternal BMI")+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"),
+        legend.position = "right")
+bmiplot
+# summary the BMI as mean (min - max)
+bmi <- sapply(meta_sub, function(x){
+  
+  mean_value <- mean(x[, "mBMI"], na.rm = T) %>% round()
+  min_value <- min(x[, "mBMI"], na.rm = T) %>% round()
+  max_value <- max(x[, "mBMI"], na.rm = T) %>% round()
+  
+  c(mean = mean_value, min = min_value, max = max_value)
+  
+  })
+bmi_col <- paste0(bmi[1,], " (", bmi[2,],"-", bmi[3,], ")" )
+bmi_col[c(3, 6, 8)-1] <-  NA
+names(bmi_col) <- colnames(bmi)
+```
+
+
+## Age
+```{r, warning = FALSE, message=FALSE}
+# plot the box plot for age
+ageplot <- ggplot(data=comb_meta, aes(x=Abbr, y=mAge)) +
+  geom_violin()+
+  geom_boxplot(width=0.1, col="red4") + 
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=12))+
+  labs(y="Age",x="Study",title = "Maternal Age")+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"),
+        legend.position = "right")
+ageplot
+
+# summary age as mean (min - max)
+age <- sapply(meta_sub, function(x){
+  
+  mean_value <- mean(x[, "mAge"], na.rm = T) %>% round()
+  min_value <- min(x[, "mAge"], na.rm = T) %>% round()
+  max_value <- max(x[, "mAge"], na.rm = T) %>% round()
+  
+  c(mean = mean_value, min = min_value, max = max_value)
+  
+})
+age_col <- paste0(age[1,], " (", age[2,],"-", age[3,], ")" )
+age_col[c(3, 8) - 1] <-  NA
+names(age_col) <- colnames(age)
+```
+
+## Race
+
+```{r, warning = FALSE, message=FALSE}
+
+# summary Race as A, B, C, O
+comb_meta$mRace <- factor(comb_meta$mRace , levels = c("A", "B", "C", "O"))
+racetable <- comb_meta %>% group_by(Abbr) %>% summarise(table(mRace))
+race      <- matrix(racetable$`table(mRace)`, nrow = 4, 
+                    dimnames = list(c("Asian", "Black", "White", "Other"),unique(racetable$Abbr)))
+
+race_col <- paste(race[1,], race[2,], race[3,], race[4,], sep = "/")
+studyname <- colnames(race)
+names(race_col) <- studyname
+
+# plot the race information as the proportion
+plotrace <- (t(race)/rowSums(t(race))) %>% round(2) %>% as.data.frame()  %>% mutate(Study = colnames(race)) %>% 
+  gather(key = "Race", value = "Prop", 1:4)
+plotrace$Study <- factor(plotrace$Study, levels = colnames(race))
+
+raceplot <- ggplot(data=plotrace, aes(x=Study, y=Prop, fill=Race)) +
+  geom_bar(stat="identity", width = 0.8)+
+  labs(y="Propotion",x="Study",title = "Maternal Race")+
+  theme_bw()+
+  theme(legend.position = "right") 
+raceplot
+```
+
+
+## Gestational age at delivery (GAAD)
+```{r, warning = FALSE, message=FALSE}
+# 5 samples in the St study miss GAAD but have preterm indicator; only remove it for this part
+comb_meta_rn <- comb_meta[!is.na(comb_meta$GAAD),]
+
+gaad <- comb_meta_rn %>% group_by(Abbr) %>% summarise(
+  l32 = sum(GAAD < 32), 
+  b3234 = sum(GAAD >=32 & GAAD < 34),
+  b3437 = sum(GAAD >=34 & GAAD < 37),
+  b3739 = sum(GAAD >=37 & GAAD < 39),
+  g39   = sum(GAAD >= 39)
+) 
+
+# summarize to "number of preterm" / "number of term" based on 37 weeks
+gaad_37 <- comb_meta %>% group_by(Abbr) %>% summarise(
+  term = table(Preterm)[1], 
+  preterm = table(Preterm)[2]
+) 
+gaad_col <- paste(gaad_37$preterm, gaad_37$term, sep = "|")
+
+
+# plot the proportion of GAAD
+total <- rowSums(gaad[,-1])
+gaad_prop <- gaad %>% mutate(l32 = l32/total,
+                             b3234 = b3234/total,
+                             b3437= b3437/total,
+                             b3739 = b3739/total,
+                             g39 = g39/total) %>% 
+  gather(key = "week", value= "prop", 2:6) %>% 
+  mutate(Abbr = factor(Abbr, levels = gaad$Abbr),
+         week = factor(week, levels = c("l32","b3234","b3437","b3739","g39")))
+
+
+mycolor = RColorBrewer::brewer.pal(9,"YlOrRd")
+mycolor1 = RColorBrewer::brewer.pal(9,"YlGnBu")
+
+
+gaadplot <- ggplot(data=gaad_prop, aes(x=Abbr, y=prop, fill=week)) +
+  geom_bar(stat="identity", width = 0.8)+
+  labs(y="Propotion",x="Study",title = "Gestational Age at Delivery", fill = "Week")+
+  theme(legend.position = "bottom") +
+  theme_bw() +
+  scale_fill_manual(values =c(mycolor[c(2,4,5)],mycolor1[6:7]),
+                    label = c("< 32 (Very PTB)", "32 - 34 (Moderately PTB)", "34 - 37 (Late PTB)", "37 - 39 (Early TB)", ">= 39 (Late TB)"))
+gaadplot
+
+# Supplementary Figure 1
+sum_plot <- ggarrange(ageplot, raceplot ,bmiplot, gaadplot, nrow = 2, ncol = 2, labels = c("A", "B", "C", "D"),widths = c(0.45,0.55))
+sum_plot
+#ggsave(sum_plot,filename = paste0(outpath,"sum_plot.png"),width = 10, height = 6, units = "in", dpi = 600)
+
+```
+
+## Sequence reads proportions  
+```{r, warning = FALSE, message=FALSE}
+
+# load the counts data
+load("count_data.Rdata")
+
+alldepth <- sapply(lapply(count_data, function(x){sapply(x, rowSums)}), unlist) %>% as.data.frame() 
+alldepth$names <- rownames(alldepth)
+
+# get the original read depth 
+ori_depth  <- sapply(ASV_meta$ASV$original, rowSums)
+Bas        <- ori_depth$Ba[!names(ori_depth$Ba) %in% overlapsample]
+names(Bas) <- paste0(names(Bas), "_Ba")
+Br_depth <- list(Br = c(Bas, ori_depth$Bb))
+ori_depth <- append(Br_depth, ori_depth[-c(1,2)]) %>% unlist() %>% as.data.frame()
+colnames(ori_depth) <- "ori"
+ori_depth$names <- rownames(ori_depth)
+
+
+alldepth <- alldepth %>% left_join(ori_depth)
+alldepth$names <- sapply(strsplit(alldepth$names, split = "[.]"), `[`,1)
+alldepth$names <- factor(alldepth$names, levels = unique(alldepth$names))
+depth_col <- alldepth %>% group_by(names) %>% summarise(aver = format(mean(ori), digits = 2,nsmall = 1,scientific = T))
+
+alldepth_prop <- alldepth %>% mutate(com = com/ori,
+                                     top =top/ori,
+                                     genus = genus/ori) %>% select(-ori)
+
+plotdepth_prop <- alldepth_prop %>% group_by(names) %>% 
+  summarise(com = mean(com), top = mean(top), genus = mean(genus)) %>% 
+  gather(key = "Type", value = "prop", 2:4) %>% 
+  mutate(Type = factor(Type, levels = c("com", "top", "genus")))
+
+# Figure 1
+depthplot_prop <- ggplot(plotdepth_prop,aes(x=names,y=prop, color = Type, fill = Type)) + 
+  geom_bar(stat="identity", position=position_dodge(0.8), width = 0.6) + 
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=12))+
+  geom_hline(yintercept = 1, linetype = "dashed", color = "red")+
+  labs(y="Avearage relative abundance",x="Dataset")+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"),
+        legend.position = "right")+
+  scale_color_manual(values=hue_pal()(3), labels = c("Common ASVs", "Top ASVs", "Genus/Species"))+
+  scale_fill_manual(values=hue_pal()(3), labels = c("Common ASVs", "Top ASVs", "Genus/Species"))
+depthplot_prop
+```
+
+## Summary table
+
+```{r, warning = FALSE, message=FALSE, comment=NA}
+
+# Table 1
+sum_table <- cbind(unique(comb_meta$Study),size_col, bmi_col, age_col, race_col, depth_col$aver, gaad_col)
+colnames(sum_table) <- c("Study", "Abbr.", "No. of samples", "No. of subjects", "Aver. sample number per subject",
+                         "Maternal BMI", "Maternal Age", "Maternal Race", "Read Depth", "GAAD (PTB | TB)")
+sum_table$Study <- paste0(sum_table$Study, " (", sum_table$Abbr., ")")
+sum_table
+#write.csv(sum_table, file = paste0(outpath, "summary table.csv"))
+```
+
+## Feature number at different levels
+
+```{r, warning = FALSE, message=FALSE, comment=NA}
+# Supplementary Table 3
+taxa_number <- sapply(taxa_data$prop, function(x){sapply(x[[1]], ncol)})
+taxa_number
+```
+
+
+
