@@ -1,0 +1,382 @@
+---
+title: "Earlier of PTB"
+author: "Caizhi Huang, Craig Gin and Ben Callahan"
+date: "05/10/2022"
+output: html_document
+---
+
+
+## Set up
+
+```{r, message=FALSE, warning=FALSE}
+
+# load the packages
+pkgs <- c("tidyverse", "gplots", "RColorBrewer", "ggpubr", "pROC", "scales")
+lapply(pkgs, require, character.only = TRUE)
+
+# load the data
+
+inpath  <- "/Users/huangc9/Documents/Ben research/Publishable/metaManuscript/Analyses/Earlier PTB/Rdata/"
+outpath <- "output/"
+
+
+load(paste0(inpath, "a3_intra_clr.Rdata"))
+load(paste0(inpath, "a3_cross_clr.Rdata"))
+load(paste0(inpath, "a3_loso_clr.Rdata"))
+
+```
+
+## Intra-analysis
+
+```{r}
+
+intra32   <- sapply(a3_intra[[1]], function(x){x[[1]] %>% colMeans() %>% round(3)}) %>% rowMeans()
+intra32_v <- sapply(a3_intra[[1]], function(x){x[[1]] %>% colMeans() %>% round(3)}) %>% apply(1, function(x){sd(x)/sqrt(10)}) 
+
+intra34   <- sapply(a3_intra[[2]], function(x){x[[1]] %>% colMeans() %>% round(3)}) %>% rowMeans()
+intra34_v <- sapply(a3_intra[[2]], function(x){x[[1]] %>% colMeans() %>% round(3)}) %>% apply(1, function(x){sd(x)/sqrt(10)}) 
+
+intra37   <- sapply(a3_intra[[3]], function(x){x[[1]] %>% colMeans() %>% round(3)}) %>% rowMeans()
+intra37_v <- sapply(a3_intra[[3]], function(x){x[[1]] %>% colMeans() %>% round(3)}) %>% apply(1, function(x){sd(x)/sqrt(10)}) 
+
+
+mytable <- cbind(intra32, intra34, intra37) %>% round(2)
+
+sname <- sapply(strsplit(names(intra32),"_"),`[`,1)
+sname[sname == "UAB"] <- "UC"
+
+ordername <- sname[order(intra32, decreasing = T)]
+
+ordername  <- c("Br" ,"Ki", "St" , "UC" , "El" ,"Ta", "Fe")
+
+
+plotdata <- data.frame(meanAUC = c(intra32, intra34, intra37), sdAUC = c(intra32_v,intra34_v,intra37_v), 
+                       study = factor(rep(sname,3), levels = ordername), type = rep(c("< 32 vs. >= 39", "< 34 vs. >= 39","34 - 37 vs. >= 39"),each = 7))
+
+intra_plot <- ggplot(data = plotdata, aes(x = study, y = meanAUC,fill = type)) +
+  geom_errorbar(aes(ymin=meanAUC-0.1, ymax=meanAUC+sdAUC), width=.2,position=position_dodge(.7)) +
+  geom_bar(stat="identity",width = 0.7, position=position_dodge())+
+  geom_hline(yintercept = 0.5, colour="red",linetype = "dashed")+
+  labs(fill = "")+
+  xlab("Dataset")+
+  ylab("Average AUC")+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"),
+        legend.position = "bottom",axis.text.x = element_text(size = 14),
+        axis.text.y = element_text(size = 14), axis.title=element_text(size=14), 
+        legend.text =element_text(size=12),legend.title =element_text(size=12))
+
+```
+
+
+## LODO-analysis
+
+```{r, message=FALSE, warning=FALSE}
+
+loso32   <- sapply(a3_loso[[1]], function(x){x[[1]] %>% round(3)}) %>% rowMeans()
+loso32_v <- sapply(a3_loso[[1]], function(x){x[[1]] %>% round(3)}) %>% apply(1, function(x){sd(x)/sqrt(10)}) 
+
+loso34   <- sapply(a3_loso[[2]], function(x){x[[1]] %>% round(3)}) %>% rowMeans()
+loso34_v <- sapply(a3_loso[[2]], function(x){x[[1]] %>% round(3)}) %>% apply(1, function(x){sd(x)/sqrt(10)}) 
+
+loso37   <- sapply(a3_loso[[3]], function(x){x[[1]] %>% round(3)}) %>% rowMeans()
+loso37_v <- sapply(a3_loso[[3]], function(x){x[[1]] %>% round(3)}) %>% apply(1, function(x){sd(x)/sqrt(10)}) 
+
+mytable <- cbind(loso32, loso34,loso37) %>% round(2)
+
+plotdata <- data.frame(meanAUC = c(loso32, loso34,loso37), sdAUC = c(loso32_v,loso34_v,loso37_v), 
+                       study = factor(rep(sname,3), levels = ordername), type = rep(c("< 32 vs. >= 39", "< 34 vs. >= 39","34 - 37 vs. >= 39"),each = 7))
+
+loso_plot <- ggplot(data = plotdata, aes(x = study, y = meanAUC,fill = type)) +
+  geom_errorbar(aes(ymin=meanAUC-0.1, ymax=meanAUC+sdAUC), width=.2,position=position_dodge(.7)) +
+  geom_bar(stat="identity",width = 0.7, position=position_dodge())+
+  geom_hline(yintercept = 0.5, colour="red",linetype = "dashed")+
+  labs(fill = "")+
+  xlab("Dataset")+
+  ylab("Average AUC")+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"),
+        legend.position = "bottom",axis.text.x = element_text(size = 14),
+        axis.text.y = element_text(size = 14), axis.title=element_text(size=14), 
+        legend.text =element_text(size=12),legend.title =element_text(size=12))
+
+```
+
+## Cross-analysis
+```{r}
+
+# reorder the name to match with cross results
+names(intra32) <- sname
+intra32 <- intra32[ordername]
+
+names(loso32) <- sname
+loso32 <- loso32[ordername]
+
+names(intra34) <- sname
+intra34 <- intra34[ordername]
+
+names(loso34) <- sname
+loso34 <- loso34[ordername]
+
+names(intra37) <- sname
+intra37 <- intra37[ordername]
+
+names(loso37) <- sname
+loso37 <- loso37[ordername]
+
+allintra <- list(intra32, intra34, intra37)
+allloso  <- list(loso32, loso34, loso37)
+
+cross_data <- list()
+for(j in 1:3){
+  tempdata <- a3_cross[[j]][[1]][[1]]
+  for(i in 1:9){
+    tempdata <- tempdata + a3_cross[[j]][[1+i]][[1]]
+  }
+  cross_data[[j]] <- (tempdata/10) %>% round(2)
+}
+
+cross_data <- lapply(cross_data, function(x){rownames(x) <- sname; colnames(x) <- sname;x[ordername,ordername]})
+
+
+allplotdata <- list()
+for(i in 1:3){
+  cross_proprf       <- cross_data[[i]]
+  diag(cross_proprf) <- allintra[[i]]
+  loso_proprf        <- allloso[[i]]
+  
+  
+  all_proprf <- cbind(cross_proprf, rowMeans(cross_proprf))
+  all_proprf <- rbind(all_proprf, colMeans(all_proprf), c(loso_proprf, mean(loso_proprf)))
+  all_proprf <- round(all_proprf, 2)
+  colnames(all_proprf) <- c(ordername, "Ave.")
+  rownames(all_proprf) <- c(ordername, "Ave.", "Combined")
+  plotdata <- all_proprf %>% as.data.frame() %>%
+  mutate("Train.Set" = factor(c(ordername, "Ave.", "Combined"), levels = rev(c(ordername, "Ave.", "Combined")))) %>%
+  gather(key = "Test.Set", value = "AUC", 1:8) %>% mutate(Test.Set = factor(Test.Set, levels = c(c(ordername, "Ave."))))
+  plotdata$ycat <- ifelse(plotdata$Train.Set == "Ave.", "Ave", ifelse(plotdata$Train.Set == "Combined", "Combined", "Study"))
+  plotdata$xcat <- ifelse(plotdata$Test.Set == "Ave.", "Ave", "Study")
+
+  plotdata$ycat <- factor(plotdata$ycat, levels = c(c("Study", "Ave", "Combined")))
+  plotdata$xcat <- factor(plotdata$xcat, levels = c("Study", "Ave"))
+  plotdata$AUC1 <- ifelse(plotdata$AUC < 0.5, 0.5, plotdata$AUC)
+  
+  # get the version without combined and average
+  plotdata1 <- plotdata %>% filter(! Train.Set %in% c("Ave.", "Combined")) %>% filter(Test.Set != "Ave.")
+
+  allplotdata[[i]] <- plotdata1
+}
+
+
+plotdataall <- Reduce(rbind, allplotdata)
+plotdataall$birth <- rep(c("< 32 vs. >= 39", "< 34 vs. >= 39","34 - 37 vs. >= 39"),each = 49)
+
+
+cross_plot <- ggplot(plotdataall, aes(x=Test.Set, y= Train.Set, fill = AUC1)) + 
+  geom_tile(color = "gray")+ # can adjust height and width
+  scale_fill_gradientn(colours = heat.colors(40)[-c(1:10)], limits = c(0.5,0.83),guide = guide_colourbar(order = 1)) +
+  geom_text(aes(label = round(AUC, 2)), size = 2, col="blue") + 
+  facet_grid(rows = vars(plotdataall$birth),
+             scales = "free", space="free") + 
+  theme_bw() + scale_x_discrete(position = "bottom")+ labs(fill = "AUC")+
+  theme(strip.text.y  = element_text(size = 10), 
+                     axis.text = element_text(size =10),
+                     axis.title = element_text(size = 12)) +
+  ylab("Train Set") + xlab("Test Set") 
+
+```
+
+
+```{r, fig.height=8, fig.width=10}
+#Figure 3
+a3plot <- ggarrange(ggarrange(intra_plot, loso_plot, nrow = 2, labels = c("", "B"),common.legend = T, legend = "top"), 
+                    cross_plot, ncol = 2, labels = c("A","C")) 
+a3plot
+#ggsave(a3plot,filename = "a3plot_bar_heat_clr.png",width = 12, height = 8, units = "in", dpi = 600)
+```
+
+
+## The result using the proportional data
+
+
+```{r, message=FALSE, warning=FALSE}
+
+
+# laod the data
+load(paste0(inpath, "a3_intra_prop.Rdata"))
+load(paste0(inpath, "a3_cross_prop.Rdata"))
+load(paste0(inpath, "a3_loso_prop.Rdata"))
+
+```
+
+## Intra-analysis
+
+```{r}
+
+intra32   <- sapply(a3_intra[[1]], function(x){x[[1]] %>% colMeans() %>% round(3)}) %>% rowMeans()
+intra32_v <- sapply(a3_intra[[1]], function(x){x[[1]] %>% colMeans() %>% round(3)}) %>% apply(1, function(x){sd(x)/sqrt(10)}) 
+
+intra34   <- sapply(a3_intra[[2]], function(x){x[[1]] %>% colMeans() %>% round(3)}) %>% rowMeans()
+intra34_v <- sapply(a3_intra[[2]], function(x){x[[1]] %>% colMeans() %>% round(3)}) %>% apply(1, function(x){sd(x)/sqrt(10)}) 
+
+intra37   <- sapply(a3_intra[[3]], function(x){x[[1]] %>% colMeans() %>% round(3)}) %>% rowMeans()
+intra37_v <- sapply(a3_intra[[3]], function(x){x[[1]] %>% colMeans() %>% round(3)}) %>% apply(1, function(x){sd(x)/sqrt(10)}) 
+
+
+mytable <- cbind(intra32, intra34, intra37) %>% round(2)
+
+sname <- sapply(strsplit(names(intra32),"_"),`[`,1)
+sname[sname == "UAB"] <- "UC"
+
+ordername <- sname[order(intra32, decreasing = T)]
+
+ordername  <- c("Br" ,"Ki", "St" , "UC" , "El" ,"Ta", "Fe")
+
+
+plotdata <- data.frame(meanAUC = c(intra32, intra34, intra37), sdAUC = c(intra32_v,intra34_v,intra37_v), 
+                       study = factor(rep(sname,3), levels = ordername), type = rep(c("< 32 vs. >= 39", "< 34 vs. >= 39","34 - 37 vs. >= 39"),each = 7))
+
+intra_plot <- ggplot(data = plotdata, aes(x = study, y = meanAUC,fill = type)) +
+  geom_errorbar(aes(ymin=meanAUC-0.1, ymax=meanAUC+sdAUC), width=.2,position=position_dodge(.7)) +
+  geom_bar(stat="identity",width = 0.7, position=position_dodge())+
+  geom_hline(yintercept = 0.5, colour="red",linetype = "dashed")+
+  labs(fill = "")+
+  xlab("Dataset")+
+  ylab("Average AUC")+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"),
+        legend.position = "bottom",axis.text.x = element_text(size = 14),
+        axis.text.y = element_text(size = 14), axis.title=element_text(size=14), 
+        legend.text =element_text(size=12),legend.title =element_text(size=12))
+
+```
+
+
+## LODO-analysis
+
+```{r, message=FALSE, warning=FALSE}
+
+loso32   <- sapply(a3_loso[[1]], function(x){x[[1]] %>% round(3)}) %>% rowMeans()
+loso32_v <- sapply(a3_loso[[1]], function(x){x[[1]] %>% round(3)}) %>% apply(1, function(x){sd(x)/sqrt(10)}) 
+
+loso34   <- sapply(a3_loso[[2]], function(x){x[[1]] %>% round(3)}) %>% rowMeans()
+loso34_v <- sapply(a3_loso[[2]], function(x){x[[1]] %>% round(3)}) %>% apply(1, function(x){sd(x)/sqrt(10)}) 
+
+loso37   <- sapply(a3_loso[[3]], function(x){x[[1]] %>% round(3)}) %>% rowMeans()
+loso37_v <- sapply(a3_loso[[3]], function(x){x[[1]] %>% round(3)}) %>% apply(1, function(x){sd(x)/sqrt(10)}) 
+
+mytable <- cbind(loso32, loso34,loso37) %>% round(2)
+
+plotdata <- data.frame(meanAUC = c(loso32, loso34,loso37), sdAUC = c(loso32_v,loso34_v,loso37_v), 
+                       study = factor(rep(sname,3), levels = ordername), type = rep(c("< 32 vs. >= 39", "< 34 vs. >= 39","34 - 37 vs. >= 39"),each = 7))
+
+loso_plot <- ggplot(data = plotdata, aes(x = study, y = meanAUC,fill = type)) +
+  geom_errorbar(aes(ymin=meanAUC-0.1, ymax=meanAUC+sdAUC), width=.2,position=position_dodge(.7)) +
+  geom_bar(stat="identity",width = 0.7, position=position_dodge())+
+  geom_hline(yintercept = 0.5, colour="red",linetype = "dashed")+
+  labs(fill = "")+
+  xlab("Dataset")+
+  ylab("Average AUC")+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"),
+        legend.position = "bottom",axis.text.x = element_text(size = 14),
+        axis.text.y = element_text(size = 14), axis.title=element_text(size=14), 
+        legend.text =element_text(size=12),legend.title =element_text(size=12))
+
+```
+
+## Cross-analysis
+```{r}
+
+# reorder the name to match with cross results
+names(intra32) <- sname
+intra32 <- intra32[ordername]
+
+names(loso32) <- sname
+loso32 <- loso32[ordername]
+
+names(intra34) <- sname
+intra34 <- intra34[ordername]
+
+names(loso34) <- sname
+loso34 <- loso34[ordername]
+
+names(intra37) <- sname
+intra37 <- intra37[ordername]
+
+names(loso37) <- sname
+loso37 <- loso37[ordername]
+
+allintra <- list(intra32, intra34, intra37)
+allloso  <- list(loso32, loso34, loso37)
+
+cross_data <- list()
+for(j in 1:3){
+  tempdata <- a3_cross[[j]][[1]][[1]]
+  for(i in 1:9){
+    tempdata <- tempdata + a3_cross[[j]][[1+i]][[1]]
+  }
+  cross_data[[j]] <- (tempdata/10) %>% round(2)
+}
+
+cross_data <- lapply(cross_data, function(x){rownames(x) <- sname; colnames(x) <- sname;x[ordername,ordername]})
+
+
+allplotdata <- list()
+for(i in 1:3){
+  cross_proprf       <- cross_data[[i]]
+  diag(cross_proprf) <- allintra[[i]]
+  loso_proprf        <- allloso[[i]]
+  
+  
+  all_proprf <- cbind(cross_proprf, rowMeans(cross_proprf))
+  all_proprf <- rbind(all_proprf, colMeans(all_proprf), c(loso_proprf, mean(loso_proprf)))
+  all_proprf <- round(all_proprf, 2)
+  colnames(all_proprf) <- c(ordername, "Ave.")
+  rownames(all_proprf) <- c(ordername, "Ave.", "Combined")
+  plotdata <- all_proprf %>% as.data.frame() %>%
+  mutate("Train.Set" = factor(c(ordername, "Ave.", "Combined"), levels = rev(c(ordername, "Ave.", "Combined")))) %>%
+  gather(key = "Test.Set", value = "AUC", 1:8) %>% mutate(Test.Set = factor(Test.Set, levels = c(c(ordername, "Ave."))))
+  plotdata$ycat <- ifelse(plotdata$Train.Set == "Ave.", "Ave", ifelse(plotdata$Train.Set == "Combined", "Combined", "Study"))
+  plotdata$xcat <- ifelse(plotdata$Test.Set == "Ave.", "Ave", "Study")
+
+  plotdata$ycat <- factor(plotdata$ycat, levels = c(c("Study", "Ave", "Combined")))
+  plotdata$xcat <- factor(plotdata$xcat, levels = c("Study", "Ave"))
+  plotdata$AUC1 <- ifelse(plotdata$AUC < 0.5, 0.5, plotdata$AUC)
+  
+  # get the version without combined and average
+  plotdata1 <- plotdata %>% filter(! Train.Set %in% c("Ave.", "Combined")) %>% filter(Test.Set != "Ave.")
+
+  allplotdata[[i]] <- plotdata1
+}
+
+
+plotdataall <- Reduce(rbind, allplotdata)
+plotdataall$birth <- rep(c("< 32 vs. >= 39", "< 34 vs. >= 39","34 - 37 vs. >= 39"),each = 49)
+
+
+cross_plot <- ggplot(plotdataall, aes(x=Test.Set, y= Train.Set, fill = AUC1)) + 
+  geom_tile(color = "gray")+ # can adjust height and width
+  scale_fill_gradientn(colours = heat.colors(40)[-c(1:10)], limits = c(0.5,0.83),guide = guide_colourbar(order = 1)) +
+  geom_text(aes(label = round(AUC, 2)), size = 2, col="blue") + 
+  facet_grid(rows = vars(plotdataall$birth),
+             scales = "free", space="free") + 
+  theme_bw() + scale_x_discrete(position = "bottom")+ labs(fill = "AUC")+
+  theme(strip.text.y  = element_text(size = 10), 
+                     axis.text = element_text(size =10),
+                     axis.title = element_text(size = 12)) +
+  ylab("Train Set") + xlab("Test Set") 
+
+```
+
+
+```{r, fig.height=8, fig.width=10}
+#Supplementary Figure 6
+a3plot_prop <- ggarrange(ggarrange(intra_plot, loso_plot, nrow = 2, labels = c("", "B"),common.legend = T, legend = "top"), 
+                    cross_plot, ncol = 2, labels = c("A","C")) 
+a3plot_prop
+
+#ggsave(a3plot_prop,filename = "a3plot_bar_heat_prop.png",width = 12, height = 8, units = "in", dpi = 600)
+```
+
+
