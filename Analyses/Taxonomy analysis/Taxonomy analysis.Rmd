@@ -1,0 +1,194 @@
+---
+title: "Predictivity of PTB"
+author: "Caizhi Huang, Craig Gin and Ben Callahan"
+date: "05/10/2022"
+output: html_document
+---
+
+
+## Set up
+
+```{r, message=FALSE, warning=FALSE}
+
+# load the packages
+pkgs <- c("tidyverse", "gplots", "RColorBrewer", "ggpubr", "corrplot", "ggnewscale")
+lapply(pkgs, require, character.only = TRUE)
+
+# load the data
+
+inpath  <- "/Users/huangc9/Documents/Ben research/Publishable/metaManuscript/Analyses/Taxonomy analysis/Rdata/"
+outpath <- "output/"
+
+
+load("/Users/huangc9/Documents/Ben research/Publishable/metaManuscript/Analyses/Data/taxa_data.Rdata")
+load(paste0(inpath, "a1_intra.Rdata"))
+load(paste0(inpath, "a1_cross.Rdata"))
+load(paste0(inpath, "a1_loso.Rdata"))
+
+```
+
+## Using the common table
+
+```{r, fig.width=10, fig.height=8}
+
+al_intra_mean <- lapply(a1_intra, function(x){sapply(x, colMeans)})
+
+
+allintra_com <- cbind(al_intra_mean[[1]],al_intra_mean[[3]])[rev(1:6),]
+colnames(allintra_com) <- taxa_data$meta %>% names
+allloso_com <- cbind(a1_loso[[1]],a1_loso[[3]])[rev(1:6),]
+colnames(allloso_com) <- taxa_data$meta %>% names
+
+
+a1_cross_v1 <- sapply(a1_cross$com_V1, function(x){
+  diag(x) <- NA; apply(x, 2, mean, na.rm = T)})
+
+a1_cross_v4 <- sapply(a1_cross$com_V4, function(x){
+  diag(x) <- NA; apply(x, 2, mean, na.rm = T)})
+
+allcross_com <- t(rbind(a1_cross_v1,a1_cross_v4))[rev(1:6),]
+colnames(allcross_com) <- taxa_data$meta %>% names
+rownames(allcross_com) <- rownames(allloso_com)
+
+all_com <- rbind(allintra_com, allcross_com, allloso_com) 
+mean_com <- rowMeans(all_com)
+
+mean_com_v1 <- rowMeans(all_com[,1:5])
+mean_com_v4 <- rowMeans(all_com[,-c(1:5)])
+
+
+ranks_com <- rbind(apply(allintra_com*-1, 2, rank, ties.method = "average"),
+                   apply(allcross_com*-1, 2, rank, ties.method = "average"),
+                   apply(allloso_com*-1, 2, rank, ties.method = "average"))
+
+rank_com <- rowMeans(ranks_com) %>% round(1)
+mean_rank_com_v1 <- rowMeans(ranks_com[,1:5]) %>% round(1)
+mean_rank_com_v4 <- rowMeans(ranks_com[,-c(1:5)]) %>% round(1)
+
+
+
+
+all_com_df <- all_com %>% as.data.frame() %>% 
+  mutate(Ave. = as.numeric(mean_com), Rank = as.numeric(rank_com),Type = rep(c("Intra-analysis", "Cross-analysis", "LOSO-analysis"),each = 6), Genus = rownames(all_com)) %>% 
+  gather(key = "Test.Study", value = "AUC", 1:14) %>% 
+  mutate(Type = factor(Type, unique(Type)), 
+         Genus = factor(Genus, unique(Genus)),
+         Test.Study = factor(Test.Study, unique(Test.Study)[rev(1:14)])) %>% 
+  mutate(ifstudy = ifelse(Test.Study == "Ave.", "Yes1", ifelse(Test.Study == "Rank","Yes2","No"))) %>% 
+  mutate(ifstudy = factor(ifstudy, levels = c("No", "Yes1", "Yes2")))
+
+
+
+heatp <- ggplot(all_com_df, aes(x=Genus, y= Test.Study, fill = AUC)) + 
+  
+  geom_raster(data = filter(all_com_df, ifstudy != "Yes2"), aes(x=Genus, y= Test.Study, fill = AUC)) + 
+  scale_fill_gradientn(colours = heat.colors(15), limits = c(0.35,0.9),guide = guide_colourbar(order = 1)) +
+  
+  new_scale_fill() +
+  
+  geom_raster(data = filter(all_com_df, ifstudy == "Yes2"), aes(x=Genus, y= Test.Study, fill = AUC)) +
+  scale_fill_gradientn(colours = hcl.colors(10, rev = T), limits = c(2.5,5.5), name = "Rank") +
+  
+  new_scale_fill() +
+  
+  geom_text(aes(label = round(AUC, 2)), size = 2, col="blue") + 
+  
+  facet_grid(ifstudy ~ Type,
+             scales = "free", space="free") + 
+  
+  theme_bw() +
+
+  theme(axis.text.x = element_text(angle = 0), # lables vertical
+        strip.text.y = element_blank()) +
+  ylab("Test Study") + xlab("Feature Level") 
+
+
+heatp
+
+#ggsave("hp_prop_com.jpeg",heatp,dpi = 800,width = 9, height = 6, units = "in")
+
+
+
+```
+
+
+## Using top feature table
+
+```{r, message=FALSE, warning=FALSE, fig.width=10, fig.height=8}
+
+allintra_com <- cbind(al_intra_mean[[2]],al_intra_mean[[4]])[rev(1:6),]
+colnames(allintra_com) <- taxa_data$meta %>% names
+allloso_com <- cbind(a1_loso[[2]],a1_loso[[4]])[rev(1:6),]
+colnames(allloso_com) <- taxa_data$meta %>% names
+
+
+a1_cross_v1 <- sapply(a1_cross$top_V1, function(x){
+  diag(x) <- NA; apply(x, 2, mean, na.rm = T)})
+
+a1_cross_v4 <- sapply(a1_cross$top_V4, function(x){
+  diag(x) <- NA; apply(x, 2, mean, na.rm = T)})
+
+allcross_com <- t(rbind(a1_cross_v1,a1_cross_v4))[rev(1:6),]
+colnames(allcross_com) <- taxa_data$meta %>% names
+rownames(allcross_com) <- rownames(allloso_com)
+
+all_com <- rbind(allintra_com, allcross_com, allloso_com) 
+mean_com <- rowMeans(all_com)
+
+mean_top_v1 <- rowMeans(all_com[,1:5])
+mean_top_v4 <- rowMeans(all_com[,-c(1:5)])
+
+
+mean_topcom_v1v4 <- rbind(mean_top_v1, mean_top_v4, mean_com_v1, mean_com_v4) %>% round(3)
+#write.csv(mean_topcom_v1v4, file = "mean_topcom_v1v4_CLR.csv")
+
+# intra
+mean_topcom_v1v4[,1:6]
+# cross
+mean_topcom_v1v4[,7:12]
+# loso
+mean_topcom_v1v4[,13:18]
+
+rank_com <- c(apply(allintra_com*-1, 2, rank, ties.method = "average") %>% rowMeans(),
+              apply(allcross_com*-1, 2, rank, ties.method = "average") %>% rowMeans(),
+              apply(allloso_com*-1, 2, rank, ties.method = "average") %>% rowMeans()) %>% 
+  round(1)
+
+all_top_df <- all_com %>% as.data.frame() %>% 
+  mutate(Ave. = as.numeric(mean_com), Rank = as.numeric(rank_com),Type = rep(c("Intra", "Cross", "Combined"),each = 6), Genus = rownames(all_com)) %>% 
+  gather(key = "Test.Study", value = "AUC", 1:14) %>% 
+  mutate(Type = factor(Type, unique(Type)), 
+         Genus = factor(Genus, unique(Genus)),
+         Test.Study = factor(Test.Study, unique(Test.Study)[rev(1:14)])) %>% 
+  mutate(ifstudy = ifelse(Test.Study == "Ave.", "Yes1", ifelse(Test.Study == "Rank","Yes2","No"))) %>% 
+  mutate(ifstudy = factor(ifstudy, levels = c("No", "Yes1", "Yes2")))
+
+all_top_df <- all_top_df %>% filter(Test.Study != "Rank") %>% mutate(AUC1 = ifelse(AUC < 0.5, 0.5, AUC))
+
+heatp_top <- ggplot(all_top_df, aes(x=Genus, y= Test.Study, fill = AUC1)) + 
+  
+  geom_raster(data = filter(all_top_df, ifstudy != "Yes2"), aes(x=Genus, y= Test.Study, fill = AUC1)) + 
+  scale_fill_gradientn(colours =  heat.colors(40)[-c(1:8)], limits = c(0.5,0.85),guide = guide_colourbar(order = 1)) +
+  
+  #new_scale_fill() +
+
+  #geom_raster(data = filter(all_top_df, ifstudy == "Yes2"), aes(x=Genus, y= Test.Study, fill = AUC)) +
+  #scale_fill_gradientn(colours = hcl.colors(10, rev = T), limits = c(2.5,5.5), name = "Rank") +
+
+  #new_scale_fill() +
+  
+  geom_text(aes(label = round(AUC, 2)), size = 3, col="blue") + 
+  
+  facet_grid(ifstudy ~ Type,
+             scales = "free", space="free") + 
+  
+  theme_bw() + labs(fill = "AUC")+
+  
+  theme(axis.text.x = element_text(angle = 0), # lables vertical
+        strip.text.y = element_blank()) +
+  ylab("Testing Set") + xlab("Feature Level") 
+
+heatp_top
+#ggsave("hp_prop_top.jpeg",heatp1,dpi = 800,width = 9, height = 5, units = "in")
+```
+

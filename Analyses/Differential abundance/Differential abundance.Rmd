@@ -1,0 +1,455 @@
+---
+title: "Differential Aundance Analysis"
+author: "Caizhi Huang, Craig Gin and Ben Callahan"
+date: "05/10/2022"
+output: html_document
+---
+
+
+
+## Set up
+
+```{r, message=FALSE, warning=FALSE}
+
+# load the packages
+pkgs <- c("tidyverse", "gplots", "RColorBrewer", "ggpubr", "corrplot", "nlme", "lme4")
+lapply(pkgs, require, character.only = TRUE)
+
+# load the data
+
+load("/Users/huangc9/Documents/Ben research/Publishable/metaManuscript/Analyses/Data/genus_data.Rdata")
+
+
+```
+
+##  One-side Wilcoxon Test
+
+```{r, fig.width=10, fig.height=8, message=FALSE, warning=FALSE}
+
+prop_genus <- genus_data$trans$prop
+meta       <- genus_data$meta
+snum  <-  length(prop_genus)
+sname <-  names(prop_genus)
+    
+# remove if GAAD is na
+   for(i in 1:snum){
+      if(sum(is.na(meta[[i]][6]) !=0)){
+        print(i)
+        prop_genus[[i]] <- prop_genus[[i]][-which(is.na(meta[[i]][6])),]
+        meta[[i]] <-  meta[[i]][-which(is.na(meta[[i]][6])),]
+      }
+    } 
+    
+    genusname    <- colnames(prop_genus$Br)
+    pvalue_great <- matrix(NA, nrow = snum, ncol = length(genusname), dimnames = list(sname, genusname))
+    pvalue_less  <- matrix(NA, nrow = snum, ncol = length(genusname), dimnames = list(sname, genusname))
+    pvalue_comb  <- matrix(NA, nrow = snum, ncol = length(genusname), dimnames = list(sname, genusname))
+    
+    
+    for(i in 1:snum){
+      for(j in 1:length(genusname)){
+        
+        tb_index  <- meta[[i]]$Preterm == 0
+        ptb_index <- meta[[i]]$Preterm == 1
+        
+        pvalue_less[i,j]  <-  wilcox.test(prop_genus[[i]][tb_index,j], prop_genus[[i]][ptb_index,j], alternative = "l")$p.value %>% round(3)
+        pvalue_great[i,j] <-  wilcox.test(prop_genus[[i]][tb_index,j], prop_genus[[i]][ptb_index,j], alternative = "g")$p.value %>% round(3)
+        
+        if(pvalue_less[i,j] == 0){pvalue_less[i,j] <- 1e-6}
+        if(pvalue_great[i,j] == 0){pvalue_great[i,j] <- 1e-6}
+        
+        if(pvalue_less[i,j] < pvalue_great[i,j]){
+          pvalue_comb[i,j] <- pvalue_less[i,j]
+        }else{
+          pvalue_comb[i,j] <- pvalue_great[i,j] * (-1)
+        }
+      }
+    }
+    # for data visulization purpose
+    pvalue_comb_1 <- pvalue_comb
+    pvalue_comb_1[pvalue_comb_1>0.05 ] <-  1.06
+    pvalue_comb_1[pvalue_comb_1<(-0.05) ] <- -1.06
+    
+    pvalue_comb_1[pvalue_comb_1<=0.05 & pvalue_comb_1>0] <- pvalue_comb_1[pvalue_comb_1<=0.05 & pvalue_comb_1>0]+1
+    pvalue_comb_1[pvalue_comb_1>=-0.05 & pvalue_comb_1<0] <- pvalue_comb_1[pvalue_comb_1>=-0.05 & pvalue_comb_1<0]-1
+    
+    # supplementary figure 9 
+    corrplot::corrplot(pvalue_comb_1, method = "color", is.corr = F, tl.cex = 1.1, tl.col = "black",
+                     p.mat = abs(pvalue_comb_1), sig.level=c(1.0009, 1.01, 1.05),insig="label_sig",
+                     tl.srt = 40, cl.pos = "b", mar = c(0, 0, 2, 2), pch.col = "yellow",pch.cex=1.5)
+
+```
+
+
+## Generalized linear mixed effect model
+
+```{r, message=FALSE, warning=FALSE, fig.width=4, fig.height=8}
+
+propdata <- genus_data$trans$prop
+metadata <- genus_data$meta
+metadata$Fe$mAge <- NA
+nstudy   <- length(propdata)
+sname    <- names(propdata)
+allgenus <- colnames(propdata$Br)
+ngenus   <- length(allgenus)
+
+metadata <- lapply(metadata, function(x){x[,9] <- factor(x[,9], levels = c("A","B","C","O"));x})
+
+sapply(metadata, function(x){table(x[,9])})
+
+# no include covariates 
+myodds_g <-  matrix(NA, nrow = 25, ncol = 3, dimnames = list(allgenus, c("Estimate", "LL", "UL")))
+pp <- c()
+
+for(jj in 1:25){
+  
+  mymodeldata <- c()
+  
+  for(i in 1:12){
+    if(i < 6){sr = 0}else{sr=1}
+    mymodeldata <- rbind(mymodeldata, data.frame(birth = metadata[[i]]$Preterm, 
+                                                 genus = propdata[[i]][,jj],
+                                                 geenus = (propdata[[i]][,jj] > 0.001)+0,
+                                                 study = i, 
+                                                 race = metadata[[i]]$mRace,
+                                                 bmi = metadata[[i]]$mBMI,
+                                                 age = metadata[[i]]$mAge,
+                                              
+                                                 sr = sr))
+    
+  }
+  
+  mymodeldata$study <- as.factor(mymodeldata$study)
+  mymodeldata$race<- relevel(mymodeldata$race, ref = 3)
+  
+  m <- glmer(birth ~ 1 + geenus + (1 | study), data = mymodeldata, family = binomial)
+  
+  mysum <- summary(m)
+  pp[jj] <- mysum[["coefficients"]][2,4]
+  se <- sqrt(diag(vcov(m)))
+  
+  # table of estimates with 95% CI
+  tab <- cbind(Est = fixef(m), LL = fixef(m) - 1.96 * se, UL = fixef(m) + 1.96 *se)
+  
+  myodds_g[jj,] <- tab[2,]
+}
+
+adjp <- p.adjust(pp, method = "BH")
+names(adjp) <- allgenus
+
+myoddsnew <- round(exp(myodds_g),2)
+
+alloutput <- cbind(myoddsnew[,1], paste0("[", myoddsnew[,2], ", ", myoddsnew[,3],"]"),round(pp,4), round(adjp,3)) 
+load("/Users/huangc9/Documents/Ben research/Publishable/metaManuscript/Analyses/Differential abundance/genusorder.Rdata")
+alloutput <- alloutput[rev(genusorder),]
+
+#write.csv(alloutput, file = paste0(outpath,"lmmtalbe1.csv"))
+
+myodd <- as.data.frame(myodds_g)
+myodd$Genus <- factor(rownames(myodd),levels = rownames(myodd))
+
+mycol <- myodd$LL > 0 
+mycol <- myodd$UL > 0 
+
+mycol <- rep("black", 25)
+mycol[myodd$LL > 0 ] <- "#F8766D"
+mycol[myodd$UL < 0 ] <- "#00BFC4"
+
+mycol1 <- rep("#F8766D",25)
+mycol1[myodd$Estimate < 0] <- "#00BFC4"
+
+myodd$cols <- mycol
+myodd$cols1 <- mycol1
+myodd$Genus <- factor(myodd$Genus, levels = genusorder)
+p1 <- ggplot(myodd, aes(x=Genus, y=Estimate,col= mycol)) +
+  geom_linerange(aes(ymin = LL, ymax = UL), col = mycol) +
+  geom_point(size=3,shape = 18, col= mycol1) +
+  coord_flip()+ ylab("Log odds ratio estimate")+
+  geom_hline(yintercept = 0, linetype = "dashed", col="brown")+
+  theme_bw()+
+  theme(axis.text.y  = element_text(size=10),
+        axis.title = element_text(size=12))
+p1
+```
+
+
+## Baysian approach
+```{r, fig.width=10, fig.height=8}
+
+source("/Users/huangc9/Documents/Ben research/Publishable/6_analysis/a5/code/functions.R")
+
+# load the genus data
+load("/Users/huangc9/Documents/Ben research/Publishable/4_prepare_data/output/genus_data.Rdata")
+
+propdata <- genus_data$trans$prop
+metadata <- genus_data$meta
+nstudy   <- length(propdata)
+sname    <- names(propdata)
+allgenus <- colnames(propdata$Br)
+ngenus   <- length(allgenus)
+
+# define the cut off vector
+cutv <- c(0, 0.001, 0.005, 0.01, 0.05, 0.1)
+
+# p0 vectors used to calculate U vector
+pvector  <- seq(0.001, 0.996, 0.005)
+uvector  <- pvector/(1 - pvector)
+
+# use the log scale of R for the uniform prior
+logr     <- seq(-1.5,1.5, 0.01)
+rvector  <- exp(logr)
+
+# detection rate
+drate <- seq(0.01, 1, 0.01)
+
+# matrix to save the number of studies after excluded studies have n12 = 0 or n22 = 0 
+keep_matrix  <- matrix(0, length(cutv), ngenus)
+
+res_l1  <- matrix(NA, length(cutv), ngenus)
+res_l1p  <- matrix(NA, length(rvector), ngenus)
+
+res_l2  <- matrix(NA, length(cutv), ngenus)
+res_l2p  <- matrix(NA, length(rvector), ngenus)
+
+res_l3  <- matrix(NA, length(cutv), ngenus)
+res_l3p  <- matrix(NA, length(rvector), ngenus)
+
+res_l4  <- matrix(NA, length(cutv), ngenus)
+res_l4p  <- matrix(NA, length(rvector), ngenus)
+
+res_l5  <- matrix(NA, length(cutv), ngenus)
+res_l5p  <- matrix(NA, length(rvector), ngenus)
+
+res_pool  <- matrix(NA, length(cutv), ngenus)
+res_poolp  <- matrix(NA, length(rvector), ngenus)
+
+ii=2
+for(gg in 1:ngenus){
+    
+    print(paste0("ii = ", ii, " gg = ", gg))
+    
+    # get the contengency table
+    genus.ptb <- mapply(function(x,y){(x[y[,15]==1,gg] > cutv[ii]) + 0}, x=propdata, y=metadata) %>% 
+      sapply(function(x)c(sum(x==1),sum(x==0)))
+    
+    genus.tb <- mapply(function(x,y){(x[y[,15]==0,gg] > cutv[ii]) + 0}, x=propdata, y=metadata) %>% 
+      sapply(function(x)c(sum(x==1),sum(x==0)))
+    
+    real_ctable <- list()
+    for(i in 1:nstudy){real_ctable[[i]] <- cbind(genus.ptb[,i], genus.tb[,i])}
+
+    # # exclude odds ratio be NaN, Inf or 0
+    # obs_oddsr <- sapply(real_ctable, getoddr)
+    # keepstudy <- which(! (is.nan(obs_oddsr) | is.infinite(obs_oddsr) | obs_oddsr==0))
+    
+    keepstudy <- which(! (sapply(real_ctable, function(x)sum(x[1,])==0) | sapply(real_ctable, function(x)sum(x[2,])==0)))
+    keep_matrix[ii,gg] <- length(keepstudy)
+    keepstudy <- 1:12
+    if(length(keepstudy) > 0){ # only run this if nstudy  > 0
+      
+      alltable <- real_ctable[keepstudy]
+      c.ptb    <- sapply(alltable, function(x)x[,1])
+      c.tb     <- sapply(alltable, function(x)x[,2])
+      
+      # ---------------- #
+      #       loop  
+      # ---------------- #
+
+      # L1: loop_UP_filter
+      r_prior_l1 <- get_prior_uniform(rvector)
+      
+      for(i in 1:length(keepstudy)){
+        
+        ctables        <- cbind(c.ptb[,i], c.tb[,i])
+        likelihood_l1  <- get_loglikelihood_u(ctables, uvector, rvector)
+        posterio_l1    <- get_posteior_r_u(r_prior_l1, likelihood_l1)
+        r_prior_l1     <- posterio_l1
+        
+      }
+      res_l1[ii,gg] <-  posterio_l1[which.max(posterio_l1[,2]),1]
+      res_l1p[,gg]  <-  posterio_l1[,2]
+      
+      # L3: loop_UE_filter
+      r_prior_l3 <- get_prior_uniform(rvector)
+      
+      for(i in 1:length(keepstudy)){
+        
+        ctables <- cbind(c.ptb[,i], c.tb[,i])
+        p0      <- c.ptb[1,i]/sum(c.ptb[,i])
+        
+        if(p0 == 1){p0=0.99}
+        if(p0 == 0){p0=0.01}
+        
+        likelihood_l3  <- get_loglikelihood_p0(ctables, p0, rvector)
+        posterio_l3    <- get_posteior_r_p0(r_prior_l3, likelihood_l3)
+        r_prior_l3     <- posterio_l3
+        
+      }
+      res_l3[ii,gg] <- posterio_l3[which.max(posterio_l3[,2]),1]
+      res_l3p[,gg]  <-  posterio_l3[,2]
+      
+      
+      # L4: loop_DR_filter
+      r_prior_l4 <- get_prior_uniform(rvector)
+      
+      for(i in 1:length(keepstudy)){
+        
+        ctables <- cbind(c.ptb[,i], c.tb[,i])
+        p0      <- c.ptb[1,i]/sum(c.ptb[,i])
+        
+        if(p0 == 1){p0=0.99}
+        if(p0 == 0){p0=0.01}
+        
+        likelihood_l4  <- get_loglikelihood_p0_drate(ctables, p0, rvector, drate)
+        posterio_l4    <- get_posteior_r_u(r_prior_l4, likelihood_l4)
+        r_prior_l4     <- posterio_l4
+        
+      }
+      res_l4[ii,gg] <- posterio_l4[which.max(posterio_l4[,2]),1]
+      res_l4p[,gg]  <-  posterio_l4[,2]
+      
+      
+      
+      # L5: loop_DR_filter_max
+      r_prior_l5 <- get_prior_uniform(rvector)
+      
+      p0 <- max(sapply(alltable, function(x)x[1,1]/sum(x[,1])))
+      if(p0 == 1){p0 = 0.99}
+      if(p0 == 0){p0 = 0.01}
+      
+      for(i in 1:length(keepstudy)){
+        
+        ctables        <- cbind(c.ptb[,i], c.tb[,i])
+        likelihood_l5  <- get_loglikelihood_p0_drate(ctables, p0, rvector, drate)
+        posterio_l5    <- get_posteior_r_u(r_prior_l5, likelihood_l5)
+        r_prior_l5     <- posterio_l5
+        
+      }
+      res_l5[ii,gg] <- posterio_l5[which.max(posterio_l5[,2]),1]
+      res_l5p[,gg]  <-  posterio_l5[,2]
+      
+      
+    }
+    
+    # L2 (loop_UP_all)
+    c.ptb.all <- sapply(real_ctable, function(x)x[,1])
+    c.tb.all  <- sapply(real_ctable, function(x)x[,2])
+    
+    r_prior_l5   <- get_prior_uniform(rvector)
+    
+    for(i in 1:nstudy){
+      
+      ctables        <- cbind(c.ptb.all[,i], c.tb.all[,i])
+      likelihood_l2  <- get_loglikelihood_u(ctables, uvector, rvector)
+      posterior_l2   <- get_posteior_r_u(r_prior_l5, likelihood_l2)
+      r_prior_l5      <- posterior_l2
+      
+    }
+    res_l2[ii,gg] <-  posterior_l2[which.max(posterior_l2[,2]),1]
+    res_l2p[,gg]  <-  posterior_l2[,2]
+    
+    # Pool
+    r_prior_pool   <- get_prior_uniform(rvector)
+    ctables_pool <- cbind(rowSums(c.ptb.all), rowSums(c.tb.all))
+    likelihood_pool  <- get_loglikelihood_u(ctables_pool, uvector, rvector)
+    posterior_pool   <- get_posteior_r_u(r_prior_pool, likelihood_pool)
+    res_pool[ii,gg] <-  posterior_pool[which.max(posterior_pool[,2]),1]
+    res_poolp[,gg]  <-  posterior_pool[,2]
+  } # end genus
+
+
+
+colnames(res_l1p) <- allgenus
+res_l1p_plot <- res_l1p %>% as.data.frame() %>% mutate(logr = log(rvector)) %>% 
+  gather(key = "genus", value = "Stepwise", 1:25) %>% 
+  mutate(genus = factor(genus, levels = allgenus))
+
+colnames(res_poolp) <- allgenus
+res_l2p_plot <- res_poolp %>% as.data.frame()  %>%   gather(key = "genus", value = "posterior", 1:25) 
+
+plotdata <- res_l1p_plot
+plotdata$Pooling <- res_l2p_plot$posterior
+
+plotdata <- plotdata %>% gather(key = "Method", value = "posterior", 3:4)
+
+subdatta <- plotdata %>% filter(genus %in% allgenus[c(1,2,18,7)])
+poesteria <- ggplot(subdatta, aes(x = logr,y = posterior, group = Method, color= Method)) +
+  geom_line() +
+  geom_vline(xintercept = 0, linetype="dashed",color="black")+
+  facet_wrap(.~genus, nrow = 2, scales = "free") +
+  ylab("Posterior")+
+  xlab("Log odds ratio")+
+  scale_color_manual(values=c('#999999','#E69F00'))+
+  theme_bw() + theme(legend.position = c(0.9,0.9), strip.text = element_text(size = 12),
+                     axis.title = element_text(size = 12))
+
+
+
+a5plot <- ggarrange(p1, poesteria, ncol = 2, labels = c("A", "B"),widths = c(0.35,0.65))
+
+
+# Figure 5
+a5plot
+
+#ggsave(paste0(outpath, "a5plot3.png"), a5plot, width = 10, height = 6, dpi = 500)
+```
+
+```{r, fig.width=10, fig.height=8}
+
+res_l1p_plot <- res_l1p %>% as.data.frame() %>% mutate(logr = log(rvector)) %>% 
+  gather(key = "genus", value = "U_prior", 1:25) %>% 
+  mutate(genus = factor(genus, levels = allgenus))
+plotdata <- res_l1p_plot
+map_log <- log(res_l1[2,])
+col_df <- data.frame(genus = allgenus, col = ifelse(map_log > 0, "blue", "red"))
+plotdata <- plotdata %>% left_join(col_df)
+
+plotdata$ind <- factor((plotdata$logr > 0) + 0)
+pos_sum      <- plotdata %>% group_by(genus, ind) %>% summarise(sum = sum(U_prior)) %>% filter(ind == 0)
+
+
+get_cum <- function(pvector){
+  cumvector <- c()
+  for(i in 1:length(pvector)){cumvector[i] <- sum(pvector[1:i])}
+  cumvector
+}
+
+
+CI_l <- c()
+CI_u <- c()
+for(i in 1:length(allgenus)){
+  pv <- plotdata %>% filter(genus == allgenus[i]) %>% dplyr::select(U_prior) %>% pull
+  cumv <- get_cum(pvector = pv)
+  CI_l[i] <- logr[last(which(cumv <= 0.025))]
+  CI_u[i] <- logr[first(which(cumv >= 0.975))]
+}
+
+
+pos_CI <- data.frame(genus = allgenus, ci = paste0("[", round(CI_l,2), ", ", round(CI_u,2),']'))
+pos_CI$genus <- factor(pos_CI$genus, levels = rev(genusorder))
+
+cbind(exp(CI_l), exp(CI_u)) %>% round(2)
+
+pos_sum$sum  <- round(pos_sum$sum, 3)
+
+plotdata$genus <- factor(plotdata$genus, levels = rev(genusorder))
+allpost <- ggplot(plotdata, aes(x = logr,y = U_prior, col = col)) +
+  geom_line(size = 0.8) +
+  geom_vline(xintercept = 0, linetype="dashed",color="black")+
+  facet_wrap(.~genus, nrow = 5, scales = "free") +
+  ylab("Posterior")+
+  labs(col = "")+
+  geom_text(data = pos_CI,  mapping = aes(x = -Inf, y = Inf, label = ci),
+            hjust = -0.1, vjust = 1.5, size = 2, color = "black")+
+  xlab("Log odds ratio")+
+  theme_bw() +
+  theme(legend.position = "none")
+
+
+# Supplementary Figure 12
+allpost
+#ggsave(paste0(outpath, "poesteria_all.png"), allpost, width = 9, height = 6, dpi = 500)
+
+
+```
+
