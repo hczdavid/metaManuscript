@@ -10,4 +10,6 @@ Reproducible analyses for the meta-analysis of the vaginal microbiome and PTB ma
 
 [Taxonomy analysis](http://htmlpreview.github.io/?https://github.com/hczdavid/metaManuscript/blob/main/Analyses/Taxonomy%20analysis/Taxonomy-analysis.html)
 
+[Feature importance](https://htmlpreview.github.io/?https://github.com/hczdavid/metaManuscript/blob/main/Analyses/Importance/Importance-Figures.html)
+
 [Differential abundance analysis](http://htmlpreview.github.io/?https://github.com/hczdavid/metaManuscript/blob/main/Analyses/Differential%20abundance/Differential-abundance.html)
